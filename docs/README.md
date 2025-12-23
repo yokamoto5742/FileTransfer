@@ -203,20 +203,6 @@ debug_mode = False
 project_name = FileTransfer
 ```
 
-**パラメータ説明**
-
-| セクション | キー | 説明 | デフォルト |
-|-----------|------|------|----------|
-| Paths | processing_dir | 監視フォルダのパス | 必須 |
-| Paths | target_dir | 移動先フォルダのパス | 必須 |
-| Rename | pattern | ファイル名に追加するパターン（複数可） | 必須 |
-| App | wait_time | ファイル書き込み完了待機時間（秒） | 0.5 |
-| LOGGING | log_retention_days | ログ保持日数 | 7 |
-| LOGGING | log_directory | ログ出力ディレクトリ | logs |
-| LOGGING | log_level | ログレベル (DEBUG/INFO/WARNING/ERROR) | INFO |
-| LOGGING | debug_mode | 詳細ログ出力有効化 | False |
-| LOGGING | project_name | ログ出力用プロジェクト名 | FileTransfer |
-
 ## Windows 固有の動作
 
 - `ctypes.windll.shell32.SHChangeNotify` を使用して、ファイル操作後に Windows Explorer のフォルダ表示を自動更新
@@ -226,7 +212,6 @@ project_name = FileTransfer
 ## ファイル処理の詳細
 
 - イベント検出：`on_created` または `on_moved` イベント発火時に処理開始
-- ファイル準備確認：約5秒間のポーリング（デフォルト0.5秒×10回）でファイルロック解除を確認
 - 上書き動作：ターゲット先に同名ファイルが存在する場合、確認なしで置き換え
 - パターン自動処理：正規表現パターンに自動的に `$` を追加（未指定時）
 
@@ -258,10 +243,10 @@ project_name = FileTransfer
 
 ## ライセンス
 
-詳細は [LICENSE](./LICENSE) を参照してください。
+このプロジェクトのライセンス情報については、 [LICENSE](./LICENSE) を参照してください。
 
 ## バージョン情報
 
-- 現在バージョン：1.0.0
-- 更新日：2025-12-23
+- **現在のバージョン**:1.0.0
+- **最終更新日**: ：2025-12-23
 - 更新履歴は [CHANGELOG.md](./CHANGELOG.md) を参照

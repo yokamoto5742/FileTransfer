@@ -47,16 +47,16 @@ class FileRenameHandler(FileSystemEventHandler):
         """新規ファイル作成時の処理"""
         if event.is_directory:
             return
-        # src_pathは bytes | str なので、str に変換
-        src_path = event.src_path if isinstance(event.src_path, str) else event.src_path.decode('utf-8')
+
+        src_path = event.src_path if isinstance(event.src_path, str) else event.src_path.decode()
         self._process_file(src_path)
 
     def on_moved(self, event: FileSystemEvent) -> None:
         """ファイル移動時の処理"""
         if event.is_directory:
             return
-        # dest_pathは bytes | str なので、str に変換
-        dest_path = event.dest_path if isinstance(event.dest_path, str) else event.dest_path.decode('utf-8')
+
+        dest_path = event.dest_path if isinstance(event.dest_path, str) else event.dest_path.decode()
         self._process_file(dest_path)
 
     def _wait_for_file_ready(self, path: Path, max_retries: int = 10) -> bool:
@@ -75,7 +75,7 @@ class FileRenameHandler(FileSystemEventHandler):
         return False
 
     def _process_file(self, file_path: str) -> None:
-        """ファイルを処理してリネームし、移動する"""
+        """ファイルを処理してリネームし移動する"""
         path = Path(file_path)
 
         # ファイル書き込み完了を待つ
@@ -108,8 +108,7 @@ class FileRenameHandler(FileSystemEventHandler):
 
     def _rename_and_move_file(self, path: Path, filename: str, extension: str) -> None:
         """ファイル名にパターンを追加し、target_dirに移動する"""
-        # 最初のパターンを使用（config.iniのpatternの値を取得）
-        # パターンから末尾の$を除去して実際の追加文字列を取得
+
         if not self.patterns:
             logger.warning("リネームパターンが設定されていません")
             self._move_file(path)
@@ -123,7 +122,6 @@ class FileRenameHandler(FileSystemEventHandler):
         new_path = self.target_dir / new_filename
 
         try:
-            # 同名ファイルが存在する場合は上書き
             if new_path.exists():
                 logger.info(f"既存ファイルを上書きします: {new_path}")
             source_dir = str(path.parent)
@@ -136,11 +134,10 @@ class FileRenameHandler(FileSystemEventHandler):
             logger.error(f"ファイルの移動に失敗しました: {path} -> {new_path}, エラー: {e}")
 
     def _move_file(self, path: Path) -> None:
-        """ファイルをtarget_dirに移動する（リネームなし）"""
+        """ファイルをtarget_dirに移動する"""
         new_path = self.target_dir / path.name
 
         try:
-            # 同名ファイルが存在する場合は上書き
             if new_path.exists():
                 logger.info(f"既存ファイルを上書きします: {new_path}")
             source_dir = str(path.parent)

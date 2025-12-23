@@ -17,8 +17,5 @@
 - Windows Explorer のフォルダ表示更新機能を実装
 - FileRenameHandler および TrayApp の単体テスト
 
-### 変更
-- アプリケーション名を FileTransfer に変更
-
 [Unreleased]: https://github.com/yokam/FileTransfer/compare/v0.0.1...HEAD
 [0.0.1]: https://github.com/yokam/FileTransfer/releases/tag/v0.0.1
