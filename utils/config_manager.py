@@ -44,7 +44,7 @@ def save_config(config: configparser.ConfigParser):
 def get_src_dir() -> str:
     """監視対象のディレクトリパスを取得"""
     config = load_config()
-    return config.get('Paths', 'src_dir')
+    return config.get('Paths', 'processing_dir')
 
 
 def get_rename_patterns() -> list[re.Pattern]:
