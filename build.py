@@ -7,7 +7,7 @@ def build_executable():
     new_version = update_version()
     subprocess.run([
         "pyinstaller",
-        "--name=FileFolderRenamer",
+        "--name=FileTransfer",
         "--windowed",
         "--add-data", "utils/config.ini:.",
         "main.py"
