@@ -47,6 +47,12 @@ def get_src_dir() -> str:
     return config.get('Paths', 'processing_dir')
 
 
+def get_target_dir() -> str:
+    """移動先のディレクトリパスを取得"""
+    config = load_config()
+    return config.get('Paths', 'target_dir')
+
+
 def get_rename_patterns() -> list[re.Pattern]:
     """ファイル名変換用の正規表現パターンリストを取得"""
     config = load_config()
