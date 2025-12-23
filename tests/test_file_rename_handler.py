@@ -1,9 +1,7 @@
-import ctypes
 import logging
 import re
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, call, mock_open, patch
+from unittest.mock import mock_open, patch
 
 import pytest
 from watchdog.events import FileCreatedEvent, FileMovedEvent

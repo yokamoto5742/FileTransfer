@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import logging
 import os
 import subprocess
 import sys
 import threading
+from typing import Optional
 
 import pystray
 from PIL import Image, ImageDraw
@@ -17,13 +20,13 @@ logger = logging.getLogger(__name__)
 class TrayApp:
     """タスクトレイアプリケーション"""
 
-    def __init__(self):
-        self.src_dir = get_src_dir()
-        self.observer = None
-        self.icon = None
+    def __init__(self) -> None:
+        self.src_dir: str = get_src_dir()
+        self.observer: Optional[Observer] = None  # type: ignore[assignment]
+        self.icon: Optional[pystray.Icon] = None  # type: ignore[assignment]
         self._validate_src_dir()
 
-    def _validate_src_dir(self):
+    def _validate_src_dir(self) -> None:
         """監視フォルダの存在確認"""
         if not os.path.exists(self.src_dir):
             logger.error(f"監視フォルダが存在しません: {self.src_dir}")
@@ -51,11 +54,11 @@ class TrayApp:
 
         return image
 
-    def _open_folder(self):
+    def _open_folder(self) -> None:
         """監視フォルダをエクスプローラーで開く"""
         subprocess.Popen(['explorer', self.src_dir])
 
-    def _quit_app(self):
+    def _quit_app(self) -> None:
         """アプリケーションを終了"""
         logger.info("アプリケーションを終了します")
         self.stop_watching()
@@ -82,22 +85,23 @@ class TrayApp:
             )
         )
 
-    def start_watching(self):
+    def start_watching(self) -> None:
         """ファイル監視を開始"""
         event_handler = FileRenameHandler()
         self.observer = Observer()
-        self.observer.schedule(event_handler, self.src_dir, recursive=False)
-        self.observer.start()
-        logger.info(f"フォルダ監視を開始しました: {self.src_dir}")
+        if self.observer is not None:
+            self.observer.schedule(event_handler, self.src_dir, recursive=False)
+            self.observer.start()
+            logger.info(f"フォルダ監視を開始しました: {self.src_dir}")
 
-    def stop_watching(self):
+    def stop_watching(self) -> None:
         """ファイル監視を停止"""
         if self.observer:
             self.observer.stop()
             self.observer.join()
             logger.info("フォルダ監視を停止しました")
 
-    def run(self):
+    def run(self) -> None:
         """アプリケーションを実行"""
         # ファイル監視を別スレッドで開始
         watch_thread = threading.Thread(target=self.start_watching, daemon=True)
@@ -114,4 +118,5 @@ class TrayApp:
         logger.info("タスクトレイに常駐しています")
 
         # タスクトレイアイコンを実行（メインスレッドでブロック）
-        self.icon.run()
+        if self.icon is not None:
+            self.icon.run()

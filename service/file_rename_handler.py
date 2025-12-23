@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import ctypes
 import logging
 import shutil
 import time
 from pathlib import Path
+from typing import Pattern
 
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
 from utils.config_manager import get_rename_patterns, get_target_dir, get_wait_time
 
@@ -15,7 +18,7 @@ SHCNE_UPDATEDIR = 0x00001000
 SHCNF_PATHW = 0x0005
 
 
-def refresh_windows_folder(folder_path: str):
+def refresh_windows_folder(folder_path: str) -> None:
     """Windowsエクスプローラーのフォルダ表示を更新"""
     try:
         shell32 = ctypes.windll.shell32
@@ -27,30 +30,34 @@ def refresh_windows_folder(folder_path: str):
 class FileRenameHandler(FileSystemEventHandler):
     """ファイルシステムイベントを処理し、ファイル名を変換するハンドラー"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.patterns = get_rename_patterns()
-        self.wait_time = get_wait_time()
-        self.target_dir = Path(get_target_dir())
+        self.patterns: list[Pattern[str]] = get_rename_patterns()
+        self.wait_time: float = get_wait_time()
+        self.target_dir: Path = Path(get_target_dir())
         self._ensure_target_dir()
 
-    def _ensure_target_dir(self):
+    def _ensure_target_dir(self) -> None:
         """移動先ディレクトリの存在を確認し、なければ作成"""
         if not self.target_dir.exists():
             self.target_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"移動先ディレクトリを作成しました: {self.target_dir}")
 
-    def on_created(self, event):
+    def on_created(self, event: FileSystemEvent) -> None:
         """新規ファイル作成時の処理"""
         if event.is_directory:
             return
-        self._process_file(event.src_path)
+        # src_pathは bytes | str なので、str に変換
+        src_path = event.src_path if isinstance(event.src_path, str) else event.src_path.decode('utf-8')
+        self._process_file(src_path)
 
-    def on_moved(self, event):
+    def on_moved(self, event: FileSystemEvent) -> None:
         """ファイル移動時の処理"""
         if event.is_directory:
             return
-        self._process_file(event.dest_path)
+        # dest_pathは bytes | str なので、str に変換
+        dest_path = event.dest_path if isinstance(event.dest_path, str) else event.dest_path.decode('utf-8')
+        self._process_file(dest_path)
 
     def _wait_for_file_ready(self, path: Path, max_retries: int = 10) -> bool:
         """ファイルの書き込み完了を待つ"""
@@ -67,7 +74,7 @@ class FileRenameHandler(FileSystemEventHandler):
                 continue
         return False
 
-    def _process_file(self, file_path: str):
+    def _process_file(self, file_path: str) -> None:
         """ファイルを処理してリネームし、移動する"""
         path = Path(file_path)
 
@@ -99,7 +106,7 @@ class FileRenameHandler(FileSystemEventHandler):
                 return True
         return False
 
-    def _rename_and_move_file(self, path: Path, filename: str, extension: str):
+    def _rename_and_move_file(self, path: Path, filename: str, extension: str) -> None:
         """ファイル名にパターンを追加し、target_dirに移動する"""
         # 最初のパターンを使用（config.iniのpatternの値を取得）
         # パターンから末尾の$を除去して実際の追加文字列を取得
@@ -128,7 +135,7 @@ class FileRenameHandler(FileSystemEventHandler):
         except Exception as e:
             logger.error(f"ファイルの移動に失敗しました: {path} -> {new_path}, エラー: {e}")
 
-    def _move_file(self, path: Path):
+    def _move_file(self, path: Path) -> None:
         """ファイルをtarget_dirに移動する（リネームなし）"""
         new_path = self.target_dir / path.name
 

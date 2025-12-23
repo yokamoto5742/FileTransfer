@@ -1,13 +1,16 @@
+from __future__ import annotations
+
 import configparser
 import os
 import re
 import sys
+from typing import Any
 
 
-def get_config_path():
+def get_config_path() -> str:
     if getattr(sys, 'frozen', False):
         # PyInstallerでビルドされた実行ファイルの場合
-        base_path = sys._MEIPASS
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
     else:
         # 通常のPythonスクリプトとして実行される場合
         base_path = os.path.dirname(__file__)
@@ -32,7 +35,7 @@ def load_config() -> configparser.ConfigParser:
     return config
 
 
-def save_config(config: configparser.ConfigParser):
+def save_config(config: configparser.ConfigParser) -> None:
     try:
         with open(CONFIG_PATH, 'w', encoding='utf-8') as configfile:
             config.write(configfile)
@@ -86,7 +89,7 @@ def get_wait_time() -> float:
     return config.getfloat('App', 'wait_time', fallback=0.5)
 
 
-def get_config_value(config: configparser.ConfigParser, section: str, key: str, default=None):
+def get_config_value(config: configparser.ConfigParser, section: str, key: str, default: Any = None) -> Any:
     """設定値を取得する汎用ヘルパー関数"""
     if not config.has_option(section, key):
         return default

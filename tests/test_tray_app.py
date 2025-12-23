@@ -1,8 +1,5 @@
 import logging
-import os
-import sys
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import configparser
 import logging
 import os
 import re
@@ -7,15 +10,15 @@ from logging.handlers import TimedRotatingFileHandler
 from utils.config_manager import load_config, get_config_value
 
 
-def setup_logging(config=None):
+def setup_logging(config: configparser.ConfigParser | None = None) -> None:
     if config is None:
         config = load_config()
 
     try:
-        log_directory = get_config_value(config, 'LOGGING', 'log_directory', 'logs')
-        log_retention_days = get_config_value(config, 'LOGGING', 'log_retention_days', 7)
-        project_name = get_config_value(config, 'LOGGING', 'project_name', 'VoiceScribe')
-        log_level = get_config_value(config, 'LOGGING', 'log_level', 'INFO')
+        log_directory = str(get_config_value(config, 'LOGGING', 'log_directory', 'logs'))
+        log_retention_days = int(get_config_value(config, 'LOGGING', 'log_retention_days', 7))
+        project_name = str(get_config_value(config, 'LOGGING', 'project_name', 'VoiceScribe'))
+        log_level = str(get_config_value(config, 'LOGGING', 'log_level', 'INFO'))
 
         if not os.path.isabs(log_directory):
             project_root = os.path.dirname(os.path.dirname(__file__))
@@ -63,7 +66,7 @@ def setup_logging(config=None):
         raise Exception(f"ログ設定の初期化中にエラーが発生しました: {e}")
 
 
-def cleanup_old_logs(log_directory: str, retention_days: int, project_name: str):
+def cleanup_old_logs(log_directory: str, retention_days: int, project_name: str) -> None:
     try:
         now = datetime.now()
         main_log_file = f'{project_name}.log'
@@ -91,17 +94,17 @@ def cleanup_old_logs(log_directory: str, retention_days: int, project_name: str)
         logging.error(f"ログクリーンアップ処理中にエラーが発生しました: {str(e)}")
 
 
-def setup_debug_logging(config=None):
+def setup_debug_logging(config: configparser.ConfigParser | None = None) -> logging.Logger | None:
     if config is None:
         config = load_config()
 
     try:
-        debug_mode = get_config_value(config, 'LOGGING', 'debug_mode', False)
+        debug_mode = bool(get_config_value(config, 'LOGGING', 'debug_mode', False))
 
         if not debug_mode:
             return None
 
-        log_directory = get_config_value(config, 'LOGGING', 'log_directory', 'logs')
+        log_directory = str(get_config_value(config, 'LOGGING', 'log_directory', 'logs'))
 
         if not os.path.isabs(log_directory):
             project_root = os.path.dirname(os.path.dirname(__file__))
@@ -127,19 +130,19 @@ def setup_debug_logging(config=None):
         return None
 
 
-def get_log_info(config=None):
+def get_log_info(config: configparser.ConfigParser | None = None) -> dict[str, str | int | bool | None] | None:
     if config is None:
         config = load_config()
 
     try:
-        log_directory = get_config_value(config, 'LOGGING', 'log_directory', 'logs')
+        log_directory = str(get_config_value(config, 'LOGGING', 'log_directory', 'logs'))
         if not os.path.isabs(log_directory):
             project_root = os.path.dirname(os.path.dirname(__file__))
             log_directory = os.path.join(project_root, log_directory)
 
-        project_name = get_config_value(config, 'LOGGING', 'project_name', 'VoiceScribe')
-        log_retention_days = get_config_value(config, 'LOGGING', 'log_retention_days', 7)
-        debug_mode = get_config_value(config, 'LOGGING', 'debug_mode', False)
+        project_name = str(get_config_value(config, 'LOGGING', 'project_name', 'VoiceScribe'))
+        log_retention_days = int(get_config_value(config, 'LOGGING', 'log_retention_days', 7))
+        debug_mode = bool(get_config_value(config, 'LOGGING', 'debug_mode', False))
 
         return {
             'log_directory': log_directory,
