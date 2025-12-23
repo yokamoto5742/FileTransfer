@@ -52,7 +52,7 @@ def get_rename_patterns() -> list[re.Pattern]:
     config = load_config()
     pattern_items = []
 
-    # pattern1, pattern2, pattern3... の形式で全パターンを取得
+    # pattern1, pattern2... の形式で全パターンを取得
     for key in config['Rename']:
         if key.startswith('pattern'):
             pattern_str = config.get('Rename', key)
