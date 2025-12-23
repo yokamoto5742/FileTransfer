@@ -1,3 +1,4 @@
+import ctypes
 import logging
 import shutil
 import time
@@ -8,6 +9,19 @@ from watchdog.events import FileSystemEventHandler
 from utils.config_manager import get_rename_patterns, get_target_dir, get_wait_time
 
 logger = logging.getLogger(__name__)
+
+# Windows Shell通知用の定数
+SHCNE_UPDATEDIR = 0x00001000
+SHCNF_PATHW = 0x0005
+
+
+def refresh_windows_folder(folder_path: str):
+    """Windowsエクスプローラーのフォルダ表示を更新"""
+    try:
+        shell32 = ctypes.windll.shell32
+        shell32.SHChangeNotify(SHCNE_UPDATEDIR, SHCNF_PATHW, folder_path, None)
+    except Exception as e:
+        logger.debug(f"フォルダ更新通知に失敗しました: {e}")
 
 
 class FileRenameHandler(FileSystemEventHandler):
@@ -105,8 +119,12 @@ class FileRenameHandler(FileSystemEventHandler):
             # 同名ファイルが存在する場合は上書き
             if new_path.exists():
                 logger.info(f"既存ファイルを上書きします: {new_path}")
+            source_dir = str(path.parent)
             shutil.move(str(path), str(new_path))
             logger.info(f"ファイルをリネーム＆移動しました: {path.name} -> {new_path}")
+            # エクスプローラーの表示を更新
+            refresh_windows_folder(source_dir)
+            refresh_windows_folder(str(self.target_dir))
         except Exception as e:
             logger.error(f"ファイルの移動に失敗しました: {path} -> {new_path}, エラー: {e}")
 
@@ -118,7 +136,11 @@ class FileRenameHandler(FileSystemEventHandler):
             # 同名ファイルが存在する場合は上書き
             if new_path.exists():
                 logger.info(f"既存ファイルを上書きします: {new_path}")
+            source_dir = str(path.parent)
             shutil.move(str(path), str(new_path))
             logger.info(f"ファイルを移動しました: {path.name} -> {new_path}")
+            # エクスプローラーの表示を更新
+            refresh_windows_folder(source_dir)
+            refresh_windows_folder(str(self.target_dir))
         except Exception as e:
             logger.error(f"ファイルの移動に失敗しました: {path} -> {new_path}, エラー: {e}")
