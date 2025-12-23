@@ -101,10 +101,10 @@ class FileRenameHandler(FileSystemEventHandler):
         new_filename = f"{filename}{suffix}{extension}"
         new_path = self.target_dir / new_filename
 
-        # 同名ファイルが存在する場合の処理
-        new_path = self._get_unique_path(new_path)
-
         try:
+            # 同名ファイルが存在する場合は上書き
+            if new_path.exists():
+                logger.info(f"既存ファイルを上書きします: {new_path}")
             shutil.move(str(path), str(new_path))
             logger.info(f"ファイルをリネーム＆移動しました: {path.name} -> {new_path}")
         except Exception as e:
@@ -114,26 +114,11 @@ class FileRenameHandler(FileSystemEventHandler):
         """ファイルをtarget_dirに移動する（リネームなし）"""
         new_path = self.target_dir / path.name
 
-        # 同名ファイルが存在する場合の処理
-        new_path = self._get_unique_path(new_path)
-
         try:
+            # 同名ファイルが存在する場合は上書き
+            if new_path.exists():
+                logger.info(f"既存ファイルを上書きします: {new_path}")
             shutil.move(str(path), str(new_path))
             logger.info(f"ファイルを移動しました: {path.name} -> {new_path}")
         except Exception as e:
             logger.error(f"ファイルの移動に失敗しました: {path} -> {new_path}, エラー: {e}")
-
-    def _get_unique_path(self, path: Path) -> Path:
-        """同名ファイルが存在する場合、ユニークなファイル名を生成"""
-        if not path.exists():
-            return path
-
-        stem = path.stem
-        suffix = path.suffix
-        counter = 1
-
-        while True:
-            new_path = path.parent / f"{stem}_{counter}{suffix}"
-            if not new_path.exists():
-                return new_path
-            counter += 1
