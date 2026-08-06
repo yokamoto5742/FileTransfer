@@ -7,7 +7,7 @@
 
 ## [Unreleased]
 
-## [0.0.1] - 2025-12-23
+## [1.0.0] - 2025-12-23
 
 ### 追加
 - FileTransferアプリケーションの初期リリース
@@ -16,6 +16,3 @@
 - 複数のリネームパターンに対応した設定ファイル機能
 - Windows Explorer のフォルダ表示更新機能を実装
 - FileRenameHandler および TrayApp の単体テスト
-
-[Unreleased]: https://github.com/yokam/FileTransfer/compare/v0.0.1...HEAD
-[0.0.1]: https://github.com/yokam/FileTransfer/releases/tag/v0.0.1

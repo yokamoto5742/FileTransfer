@@ -176,7 +176,7 @@ python build.py
 
 自動実行内容：
 - `app/__init__.py` 内のパッチバージョンをインクリメント
-- `docs/README.md` のバージョン・日付情報を更新
+- `README.md` のバージョン・日付情報を更新
 - PyInstaller で `--windowed` フラグ付きでビルド
 - `utils/config.ini` を実行ファイルにバンドル
 
@@ -221,7 +221,7 @@ project_name = FileTransfer
 
 1. `config.ini` の `processing_dir` が存在するか確認
 2. パスに日本語を含む場合は UTF-8 エンコーディングで保存
-3. ログ（`logs/` ディレクトリ）でエラーメッセージを確認
+3. ログ（`logs` ディレクトリ）でエラーメッセージを確認
 
 ### ファイルがリネームされない
 
@@ -243,10 +243,10 @@ project_name = FileTransfer
 
 ## ライセンス
 
-このプロジェクトのライセンス情報については、 [LICENSE](./LICENSE) を参照してください。
+このプロジェクトのライセンス情報については、 [LICENSE](docs/LICENSE) を参照してください。
 
 ## バージョン情報
 
 - **現在のバージョン**:1.0.0
 - **最終更新日**: ：2025-12-23
-- 更新履歴は [CHANGELOG.md](./CHANGELOG.md) を参照
+- 更新履歴は [CHANGELOG.md](docs/CHANGELOG.md) を参照
