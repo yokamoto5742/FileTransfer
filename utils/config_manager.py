@@ -24,6 +24,8 @@ class TargetRule:
     suffix: str
     # サフィックスが既に付いているかの判定用。suffixが空の場合はNone
     pattern: Optional[Pattern[str]]
+    # 移動対象のファイル名を判定する正規表現。未設定の場合はNone
+    filename_regex: Optional[Pattern[str]] = None
 
 
 @dataclass(frozen=True)
@@ -91,9 +93,23 @@ def _compile_pattern(suffix: str) -> Optional[Pattern[str]]:
         raise
 
 
+def _compile_filename_regex(value: str) -> Optional[Pattern[str]]:
+    """移動対象ファイル名を判定する正規表現をコンパイル"""
+    if not value:
+        return None
+
+    try:
+        return re.compile(value)
+    except re.error as e:
+        print(f"正規表現パターンが無効です: {value}")
+        print(f"エラー: {e}")
+        raise
+
+
 def _build_target_rule(section: configparser.SectionProxy, index: str) -> TargetRule:
     """target_dirN に対応する振り分けルールを組み立てる"""
     filenames = _parse_filenames(section.get(f"filename{index}", ""))
+    filename_regex = _compile_filename_regex(section.get(f"regex{index}", "").strip())
 
     # 設定値が$付きでもサフィックスとしては$を除いた文字列を使う
     suffix = section.get(f"pattern{index}", "").strip().rstrip("$")
@@ -103,6 +119,7 @@ def _build_target_rule(section: configparser.SectionProxy, index: str) -> Target
         filenames=filenames,
         suffix=suffix,
         pattern=_compile_pattern(suffix),
+        filename_regex=filename_regex,
     )
 
 

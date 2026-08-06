@@ -40,7 +40,8 @@ python build.py
 - `[Watch1]`, `[Watch2]`...: 監視元ごとのセクション（番号の昇順で処理）
   - `processing_dir`: 監視対象ディレクトリ
   - `target_dir1`, `target_dir2`...: 移動先ディレクトリ
-  - `filename1`, `filename2`...: `target_dirN`に移動するファイル名（カンマ区切り、空欄なら全ファイル）
+  - `filename1`, `filename2`...: `target_dirN`に移動するファイル名（カンマ区切り、完全一致、空欄なら全ファイル）
+  - `regex1`, `regex2`...: `target_dirN`に移動するファイル名の正規表現（`filenameN`の完全一致に一致しない場合のみ判定、空欄なら無効）
   - `pattern1`, `pattern2`...: `target_dirN`へ移動する際にファイル名末尾へ追加するサフィックス
 - `[App]`: `wait_time`
 - `[LOGGING]`: `log_retention_days`, `log_directory`, `log_level`, `debug_mode`, `project_name`

@@ -246,3 +246,40 @@ pattern1 = [invalid
 """):
             with pytest.raises(re.error):
                 get_watch_rules()
+
+    def test_regex_compiles_per_target(self, config_factory):
+        """regexNはターゲットごとにコンパイルされる"""
+        with config_factory("""
+[Watch1]
+processing_dir = C:\\src
+target_dir1 = C:\\dest\\A
+regex1 = _magnate\\.md$
+"""):
+            rules = get_watch_rules()
+
+        assert rules[0].targets[0].filename_regex is not None
+        assert rules[0].targets[0].filename_regex.search("report_magnate.md")
+
+    def test_missing_regex_key_yields_no_regex(self, config_factory):
+        """regexNが無い場合はfilename_regexがNone"""
+        with config_factory("""
+[Watch1]
+processing_dir = C:\\src
+target_dir1 = C:\\dest\\A
+"""):
+            rules = get_watch_rules()
+
+        assert rules[0].targets[0].filename_regex is None
+
+    def test_invalid_regex_raises(self, config_factory):
+        """不正な正規表現はエラー"""
+        import re
+
+        with config_factory("""
+[Watch1]
+processing_dir = C:\\src
+target_dir1 = C:\\dest\\A
+regex1 = [invalid
+"""):
+            with pytest.raises(re.error):
+                get_watch_rules()

@@ -96,16 +96,20 @@ class FileRenameHandler(FileSystemEventHandler):
         self._move_file(path, rule)
 
     def _resolve_rule(self, filename: str) -> Optional[TargetRule]:
-        """ファイル名に対応する移動先ルールを取得（ファイル名指定を優先）"""
+        """ファイル名に対応する移動先ルールを取得（完全一致 > 正規表現 > 全件受け入れの順）"""
         name = filename.lower()
 
         for rule in self.targets:
             if name in rule.filenames:
                 return rule
 
-        # ファイル名指定がないルールは全ファイルを受け入れる
         for rule in self.targets:
-            if not rule.filenames:
+            if rule.filename_regex is not None and rule.filename_regex.search(filename):
+                return rule
+
+        # ファイル名指定も正規表現指定もないルールは全ファイルを受け入れる
+        for rule in self.targets:
+            if not rule.filenames and rule.filename_regex is None:
                 return rule
 
         return None

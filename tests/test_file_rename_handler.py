@@ -10,13 +10,14 @@ from service.file_rename_handler import FileRenameHandler, refresh_windows_folde
 from utils.config_manager import TargetRule
 
 
-def make_rule(directory, filenames=(), suffix="_renamed") -> TargetRule:
+def make_rule(directory, filenames=(), suffix="_renamed", regex=None) -> TargetRule:
     """テスト用のTargetRuleを生成"""
     return TargetRule(
         directory=Path(directory),
         filenames=frozenset(name.lower() for name in filenames),
         suffix=suffix,
         pattern=re.compile(f"{suffix}$") if suffix else None,
+        filename_regex=re.compile(regex) if regex else None,
     )
 
 
@@ -211,6 +212,46 @@ class TestFileRenameHandlerResolveRule:
         rule = handler._resolve_rule("test1.md")
         assert rule is not None
         assert str(rule.directory) == r"C:\test\first"
+
+    def test_resolve_rule_matches_regex(self, make_handler):
+        """正規表現に一致するファイル名はそのルールへ"""
+        handler = make_handler([make_rule(r"C:\test\specific", regex=r"_magnate\.md$")])
+
+        rule = handler._resolve_rule("report_magnate.md")
+        assert rule is not None
+        assert str(rule.directory) == r"C:\test\specific"
+
+    def test_resolve_rule_prefers_filename_over_regex(self, make_handler):
+        """完全一致は正規表現より優先される"""
+        handler = make_handler(
+            [
+                make_rule(r"C:\test\regex", regex=r".*\.md$"),
+                make_rule(r"C:\test\exact", filenames=["test1.md"]),
+            ]
+        )
+
+        rule = handler._resolve_rule("test1.md")
+        assert rule is not None
+        assert str(rule.directory) == r"C:\test\exact"
+
+    def test_resolve_rule_regex_before_catch_all(self, make_handler):
+        """正規表現に一致しないファイルは受け皿ルールへ"""
+        handler = make_handler(
+            [
+                make_rule(r"C:\test\regex", regex=r"_magnate\.md$"),
+                make_rule(r"C:\test\all"),
+            ]
+        )
+
+        rule = handler._resolve_rule("other.txt")
+        assert rule is not None
+        assert str(rule.directory) == r"C:\test\all"
+
+    def test_resolve_rule_regex_is_case_sensitive(self, make_handler):
+        """正規表現の一致判定は大文字小文字を区別する"""
+        handler = make_handler([make_rule(r"C:\test\specific", regex=r"_magnate\.md$")])
+
+        assert handler._resolve_rule("REPORT_MAGNATE.MD") is None
 
 
 class TestFileRenameHandlerBuildTargetName:
