@@ -13,7 +13,7 @@ def main():
     try:
         app = TrayApp()
         app.run()
-    except FileNotFoundError as e:
+    except (FileNotFoundError, ValueError) as e:
         logger.error(f"設定ファイルエラー: {e}")
         sys.exit(1)
     except Exception as e:

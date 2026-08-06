@@ -9,7 +9,7 @@ from typing import Optional
 
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
-from utils.config_manager import TargetRule, get_target_rules, get_wait_time
+from utils.config_manager import TargetRule
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +30,15 @@ def refresh_windows_folder(folder_path: str) -> None:
 class FileRenameHandler(FileSystemEventHandler):
     """ファイルシステムイベントを処理し、ファイル名を変換するハンドラー"""
 
-    def __init__(self) -> None:
+    def __init__(self, targets: list[TargetRule], wait_time: float) -> None:
         super().__init__()
-        self.rules: list[TargetRule] = get_target_rules()
-        self.wait_time: float = get_wait_time()
+        self.targets: list[TargetRule] = targets
+        self.wait_time: float = wait_time
         self._ensure_target_dirs()
 
     def _ensure_target_dirs(self) -> None:
         """全ての移動先ディレクトリの存在を確認し、なければ作成"""
-        for rule in self.rules:
+        for rule in self.targets:
             if not rule.directory.exists():
                 rule.directory.mkdir(parents=True, exist_ok=True)
                 logger.info(f"移動先ディレクトリを作成しました: {rule.directory}")
@@ -99,12 +99,12 @@ class FileRenameHandler(FileSystemEventHandler):
         """ファイル名に対応する移動先ルールを取得（ファイル名指定を優先）"""
         name = filename.lower()
 
-        for rule in self.rules:
+        for rule in self.targets:
             if name in rule.filenames:
                 return rule
 
         # ファイル名指定がないルールは全ファイルを受け入れる
-        for rule in self.rules:
+        for rule in self.targets:
             if not rule.filenames:
                 return rule
 

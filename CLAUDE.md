@@ -9,8 +9,8 @@ FileTransferは、指定フォルダを監視し、新規作成/移動された�
 ## アーキテクチャ
 
 - `main.py` — エントリーポイント。ロギングを初期化し `TrayApp` を起動。
-- `app/tray_app.py` — `TrayApp`: pystrayによるトレイアイコンを管理し、バックグラウンドスレッドで`watchdog.Observer`により`processing_dir`を監視。
-- `service/file_rename_handler.py` — `FileRenameHandler`: ファイル作成/移動イベントを検知し、書き込み完了を待ってから正規表現パターン（最長一致優先、末尾に`$`を自動付与）でリネームし`target_dir`へ移動。`SHChangeNotify`（ctypes経由）でExplorerを更新。
+- `app/tray_app.py` — `TrayApp`: pystrayによるトレイアイコンを管理し、バックグラウンドスレッドで単一の`watchdog.Observer`に監視元を全て登録（`recursive=False`）。監視元ごとに`FileRenameHandler`を1つ生成する。
+- `service/file_rename_handler.py` — `FileRenameHandler`: ファイル作成/移動イベントを検知し、書き込み完了を待ってからファイル名に応じた移動先へリネームして移動。`SHChangeNotify`（ctypes経由）でExplorerを更新。設定は読まず、移動先ルールと待機時間をコンストラクタで受け取る。
 - `utils/config_manager.py` — `utils/config.ini`の読み込み/保存。PyInstallerでフリーズされた実行ファイルでは`sys._MEIPASS`からパスを解決。
 - `utils/log_rotation.py` — `TimedRotatingFileHandler`による日次ログローテーションと古いログの自動削除を設定。
 
@@ -37,10 +37,15 @@ python build.py
 ## 実行時設定
 
 `utils/config.ini`に実際の稼働設定が直接コミットされている（テンプレートではない）。
-- `[Paths]`: `processing_dir`, `target_dir`
-- `[Rename]`: `pattern`, `pattern1`, `pattern2`...（正規表現）
+- `[Watch1]`, `[Watch2]`...: 監視元ごとのセクション（番号の昇順で処理）
+  - `processing_dir`: 監視対象ディレクトリ
+  - `target_dir1`, `target_dir2`...: 移動先ディレクトリ
+  - `filename1`, `filename2`...: `target_dirN`に移動するファイル名（カンマ区切り、空欄なら全ファイル）
+  - `pattern1`, `pattern2`...: `target_dirN`へ移動する際にファイル名末尾へ追加するサフィックス
 - `[App]`: `wait_time`
 - `[LOGGING]`: `log_retention_days`, `log_directory`, `log_level`, `debug_mode`, `project_name`
+
+振り分けルールは監視元ごとに独立している。起動時に、移動先が監視元と同一のディレクトリを指している場合（無限ループになる）はエラー終了する。
 
 ## コーディング規約・コミット規約・テスト
 

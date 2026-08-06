@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import sys
 import threading
+from pathlib import Path
 from typing import Optional
 
 import pystray
@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 from watchdog.observers import Observer
 
 from service.file_rename_handler import FileRenameHandler
-from utils.config_manager import get_src_dir
+from utils.config_manager import WatchRule, get_wait_time, get_watch_rules
 
 logger = logging.getLogger(__name__)
 
@@ -21,15 +21,40 @@ class TrayApp:
     """タスクトレイアプリケーション"""
 
     def __init__(self) -> None:
-        self.src_dir: str = get_src_dir()
+        self.watch_rules: list[WatchRule] = get_watch_rules()
         self.observer: Optional[Observer] = None  # type: ignore[assignment]
         self.icon: Optional[pystray.Icon] = None  # type: ignore[assignment]
-        self._validate_src_dir()
+        self._validate_watch_rules()
 
-    def _validate_src_dir(self) -> None:
-        """監視フォルダの存在確認"""
-        if not os.path.exists(self.src_dir):
-            logger.error(f"監視フォルダが存在しません: {self.src_dir}")
+    def _validate_watch_rules(self) -> None:
+        """監視フォルダの存在確認と移動ループの検出"""
+        existing = []
+        for rule in self.watch_rules:
+            if rule.source.exists():
+                existing.append(rule)
+            else:
+                logger.error(f"監視フォルダが存在しません: {rule.source}")
+
+        if not existing:
+            logger.error("監視可能なフォルダがありません")
+            sys.exit(1)
+
+        self.watch_rules = existing
+        self._reject_move_loops()
+
+    def _reject_move_loops(self) -> None:
+        """移動先が監視フォルダと同一の場合は無限ループになるため終了する"""
+        sources = {rule.source.resolve() for rule in self.watch_rules}
+        looped = [
+            target.directory
+            for rule in self.watch_rules
+            for target in rule.targets
+            if target.directory.resolve() in sources
+        ]
+
+        if looped:
+            for directory in looped:
+                logger.error(f"移動先が監視フォルダと同一です: {directory}")
             sys.exit(1)
 
     def _create_icon_image(self) -> Image.Image:
@@ -54,9 +79,9 @@ class TrayApp:
 
         return image
 
-    def _open_folder(self) -> None:
+    def _open_folder(self, folder: Path) -> None:
         """監視フォルダをエクスプローラーで開く"""
-        subprocess.Popen(["explorer", self.src_dir])
+        subprocess.Popen(["explorer", str(folder)])
 
     def _quit_app(self) -> None:
         """アプリケーションを終了"""
@@ -67,29 +92,37 @@ class TrayApp:
 
     def _create_menu(self) -> pystray.Menu:
         """タスクトレイメニューを作成"""
+        folder_items = [
+            pystray.MenuItem(
+                text=rule.source.name,
+                # ループ内のlambdaはデフォルト引数でフォルダを束縛する
+                action=lambda folder=rule.source: self._open_folder(folder),
+            )
+            for rule in self.watch_rules
+        ]
+
         return pystray.Menu(
             pystray.MenuItem(
-                text=f"監視中: {os.path.basename(self.src_dir)}", action=None, enabled=False
+                text=f"監視中: {len(self.watch_rules)}フォルダ", action=None, enabled=False
             ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem(text="監視フォルダを開く", action=lambda: self._open_folder()),
+            pystray.MenuItem(text="監視フォルダを開く", action=pystray.Menu(*folder_items)),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(text="終了", action=lambda: self._quit_app()),
         )
 
     def start_watching(self) -> None:
         """ファイル監視を開始"""
-        try:
-            event_handler = FileRenameHandler()
-        except ValueError as e:
-            logger.error(f"設定エラーのため監視を開始できません: {e}")
-            return
+        wait_time = get_wait_time()
+        observer = Observer()
 
-        self.observer = Observer()
-        if self.observer is not None:
-            self.observer.schedule(event_handler, self.src_dir, recursive=False)
-            self.observer.start()
-            logger.info(f"フォルダ監視を開始しました: {self.src_dir}")
+        for rule in self.watch_rules:
+            event_handler = FileRenameHandler(list(rule.targets), wait_time)
+            observer.schedule(event_handler, str(rule.source), recursive=False)
+            logger.info(f"フォルダ監視を開始しました: {rule.source}")
+
+        self.observer = observer
+        observer.start()
 
     def stop_watching(self) -> None:
         """ファイル監視を停止"""

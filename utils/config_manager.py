@@ -10,6 +10,7 @@ from typing import Any, Optional, Pattern
 
 
 TARGET_DIR_KEY = re.compile(r"^target_dir(\d+)$")
+WATCH_SECTION = re.compile(r"^Watch(\d+)$")
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,14 @@ class TargetRule:
     suffix: str
     # サフィックスが既に付いているかの判定用。suffixが空の場合はNone
     pattern: Optional[Pattern[str]]
+
+
+@dataclass(frozen=True)
+class WatchRule:
+    """監視元ディレクトリと、そこから振り分ける先のルール"""
+
+    source: Path
+    targets: tuple[TargetRule, ...]
 
 
 def get_config_path() -> str:
@@ -62,12 +71,6 @@ def save_config(config: configparser.ConfigParser) -> None:
         raise
 
 
-def get_src_dir() -> str:
-    """監視対象のディレクトリパスを取得"""
-    config = load_config()
-    return config.get("Paths", "processing_dir")
-
-
 def _parse_filenames(value: str) -> frozenset[str]:
     """カンマ区切りのファイル名指定を小文字の集合に変換"""
     return frozenset(name.strip().lower() for name in value.split(",") if name.strip())
@@ -88,37 +91,57 @@ def _compile_pattern(suffix: str) -> Optional[Pattern[str]]:
         raise
 
 
-def _build_target_rule(config: configparser.ConfigParser, index: str) -> TargetRule:
+def _build_target_rule(section: configparser.SectionProxy, index: str) -> TargetRule:
     """target_dirN に対応する振り分けルールを組み立てる"""
-    filenames = _parse_filenames(config.get("Paths", f"filename{index}", fallback=""))
+    filenames = _parse_filenames(section.get(f"filename{index}", ""))
 
-    suffix = ""
-    if config.has_section("Rename"):
-        suffix = config.get("Rename", f"pattern{index}", fallback="").strip()
     # 設定値が$付きでもサフィックスとしては$を除いた文字列を使う
-    suffix = suffix.rstrip("$")
+    suffix = section.get(f"pattern{index}", "").strip().rstrip("$")
 
     return TargetRule(
-        directory=Path(config.get("Paths", f"target_dir{index}")),
+        directory=Path(section[f"target_dir{index}"]),
         filenames=filenames,
         suffix=suffix,
         pattern=_compile_pattern(suffix),
     )
 
 
-def get_target_rules() -> list[TargetRule]:
-    """移動先ディレクトリごとの振り分けルールを番号の昇順で取得"""
-    config = load_config()
+def _build_watch_rule(section: configparser.SectionProxy) -> WatchRule:
+    """[WatchN] セクションから監視元と移動先ルールを組み立てる"""
+    source = section.get("processing_dir", "").strip()
+    if not source:
+        raise ValueError(
+            f"[{section.name}] に監視ディレクトリ（processing_dir）が設定されていません"
+        )
 
-    indexed_rules = []
-    for key in config["Paths"]:
+    indexed_targets = []
+    for key in section:
         matched = TARGET_DIR_KEY.match(key)
         if matched:
             index = matched.group(1)
-            indexed_rules.append((int(index), _build_target_rule(config, index)))
+            indexed_targets.append((int(index), _build_target_rule(section, index)))
+
+    if not indexed_targets:
+        raise ValueError(
+            f"[{section.name}] に移動先ディレクトリ（target_dir1など）が設定されていません"
+        )
+
+    indexed_targets.sort(key=lambda item: item[0])
+    return WatchRule(source=Path(source), targets=tuple(rule for _, rule in indexed_targets))
+
+
+def get_watch_rules() -> list[WatchRule]:
+    """監視元ディレクトリごとの振り分けルールを番号の昇順で取得"""
+    config = load_config()
+
+    indexed_rules = []
+    for name in config.sections():
+        matched = WATCH_SECTION.match(name)
+        if matched:
+            indexed_rules.append((int(matched.group(1)), _build_watch_rule(config[name])))
 
     if not indexed_rules:
-        raise ValueError("移動先ディレクトリ（target_dir1など）が設定されていません")
+        raise ValueError("監視ディレクトリ（[Watch1]など）が設定されていません")
 
     indexed_rules.sort(key=lambda item: item[0])
     return [rule for _, rule in indexed_rules]

@@ -21,16 +21,15 @@ def make_rule(directory, filenames=(), suffix="_renamed") -> TargetRule:
 
 
 @pytest.fixture
-def mock_config():
-    """設定のモックを提供"""
-    rules = [make_rule(r"C:\test\target")]
-    with (
-        patch("service.file_rename_handler.get_target_rules") as mock_rules,
-        patch("service.file_rename_handler.get_wait_time") as mock_wait,
-    ):
-        mock_rules.return_value = rules
-        mock_wait.return_value = 0.1
-        yield {"rules": mock_rules, "wait_time": mock_wait}
+def make_handler():
+    """移動先ディレクトリを作成せずにハンドラを生成するファクトリ"""
+
+    def _factory(targets=None) -> FileRenameHandler:
+        rules = targets if targets is not None else [make_rule(r"C:\test\target")]
+        with patch.object(FileRenameHandler, "_ensure_target_dirs"):
+            return FileRenameHandler(rules, wait_time=0.01)
+
+    return _factory
 
 
 @pytest.fixture
@@ -70,72 +69,66 @@ class TestRefreshWindowsFolder:
 class TestFileRenameHandlerInit:
     """FileRenameHandlerの初期化テスト"""
 
-    def test_init_success(self, mock_config):
+    def test_init_success(self):
         """正常な初期化"""
         with patch.object(Path, "exists", return_value=True):
-            handler = FileRenameHandler()
-            assert len(handler.rules) == 1
+            handler = FileRenameHandler([make_rule(r"C:\test\target")], wait_time=0.1)
+            assert len(handler.targets) == 1
             assert handler.wait_time == 0.1
-            assert str(handler.rules[0].directory) == r"C:\test\target"
+            assert str(handler.targets[0].directory) == r"C:\test\target"
 
-    def test_init_creates_target_dirs_if_not_exists(self, mock_config, caplog):
+    def test_init_creates_target_dirs_if_not_exists(self, caplog):
         """移動先ディレクトリが存在しない場合は作成"""
         with (
             patch.object(Path, "exists", return_value=False),
             patch.object(Path, "mkdir") as mock_mkdir,
         ):
             with caplog.at_level(logging.INFO):
-                FileRenameHandler()
+                FileRenameHandler([make_rule(r"C:\test\target")], wait_time=0.1)
             mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
             assert "移動先ディレクトリを作成しました" in caplog.text
 
-    def test_init_creates_all_target_dirs(self, mock_config):
+    def test_init_creates_all_target_dirs(self):
         """複数の移動先ディレクトリをすべて作成"""
-        mock_config["rules"].return_value = [
-            make_rule(r"C:\test\a"),
-            make_rule(r"C:\test\b"),
-        ]
+        targets = [make_rule(r"C:\test\a"), make_rule(r"C:\test\b")]
         with (
             patch.object(Path, "exists", return_value=False),
             patch.object(Path, "mkdir") as mock_mkdir,
         ):
-            FileRenameHandler()
+            FileRenameHandler(targets, wait_time=0.1)
             assert mock_mkdir.call_count == 2
 
-    def test_ensure_target_dirs_called_on_init(self, mock_config):
+    def test_ensure_target_dirs_called_on_init(self):
         """初期化時に移動先ディレクトリの確認が呼ばれる"""
         with patch.object(FileRenameHandler, "_ensure_target_dirs") as mock_ensure:
-            FileRenameHandler()
+            FileRenameHandler([make_rule(r"C:\test\target")], wait_time=0.1)
             mock_ensure.assert_called_once()
 
 
 class TestFileRenameHandlerWaitForFileReady:
     """_wait_for_file_readyメソッドのテスト"""
 
-    def test_wait_for_file_ready_success(self, mock_config, temp_test_dirs):
+    def test_wait_for_file_ready_success(self, make_handler, temp_test_dirs):
         """ファイルが準備完了で正常終了"""
-        handler = FileRenameHandler()
-        handler.wait_time = 0.01  # テスト高速化
+        handler = make_handler()
         test_file = temp_test_dirs["src"] / "test.txt"
         test_file.write_text("test content")
 
         result = handler._wait_for_file_ready(test_file)
         assert result is True
 
-    def test_wait_for_file_ready_file_not_exists(self, mock_config):
+    def test_wait_for_file_ready_file_not_exists(self, make_handler):
         """ファイルが存在しない場合はFalse"""
-        handler = FileRenameHandler()
-        handler.wait_time = 0.01
+        handler = make_handler()
         non_existent = Path(r"C:\test\nonexistent.txt")
 
         with patch.object(Path, "exists", return_value=False):
             result = handler._wait_for_file_ready(non_existent)
         assert result is False
 
-    def test_wait_for_file_ready_file_locked(self, mock_config):
+    def test_wait_for_file_ready_file_locked(self, make_handler):
         """ファイルがロックされている場合の再試行"""
-        handler = FileRenameHandler()
-        handler.wait_time = 0.01
+        handler = make_handler()
         test_file = Path(r"C:\test\locked.txt")
 
         # 最初の2回はPermissionError、3回目は成功
@@ -149,10 +142,9 @@ class TestFileRenameHandlerWaitForFileReady:
         assert open_mock.call_count == 3
         assert result is True
 
-    def test_wait_for_file_ready_max_retries_exceeded(self, mock_config):
+    def test_wait_for_file_ready_max_retries_exceeded(self, make_handler):
         """最大再試行回数を超えた場合はFalse"""
-        handler = FileRenameHandler()
-        handler.wait_time = 0.01
+        handler = make_handler()
         test_file = Path(r"C:\test\locked.txt")
 
         open_mock = mock_open()
@@ -167,57 +159,54 @@ class TestFileRenameHandlerWaitForFileReady:
 class TestFileRenameHandlerResolveRule:
     """_resolve_ruleメソッドのテスト"""
 
-    def test_resolve_rule_prefers_filename_match(self, mock_config):
+    def test_resolve_rule_prefers_filename_match(self, make_handler):
         """ファイル名指定のあるルールを優先する"""
-        mock_config["rules"].return_value = [
-            make_rule(r"C:\test\all"),
-            make_rule(r"C:\test\specific", filenames=["test1.md"]),
-        ]
-        handler = FileRenameHandler()
+        handler = make_handler(
+            [
+                make_rule(r"C:\test\all"),
+                make_rule(r"C:\test\specific", filenames=["test1.md"]),
+            ]
+        )
 
         rule = handler._resolve_rule("test1.md")
         assert rule is not None
         assert str(rule.directory) == r"C:\test\specific"
 
-    def test_resolve_rule_is_case_insensitive(self, mock_config):
+    def test_resolve_rule_is_case_insensitive(self, make_handler):
         """ファイル名の一致判定は大文字小文字を区別しない"""
-        mock_config["rules"].return_value = [
-            make_rule(r"C:\test\specific", filenames=["test1.md"]),
-        ]
-        handler = FileRenameHandler()
+        handler = make_handler([make_rule(r"C:\test\specific", filenames=["test1.md"])])
 
         rule = handler._resolve_rule("TEST1.MD")
         assert rule is not None
         assert str(rule.directory) == r"C:\test\specific"
 
-    def test_resolve_rule_falls_back_to_empty_filenames(self, mock_config):
+    def test_resolve_rule_falls_back_to_empty_filenames(self, make_handler):
         """指定に一致しない場合はファイル名指定なしのルールへ"""
-        mock_config["rules"].return_value = [
-            make_rule(r"C:\test\specific", filenames=["test1.md"]),
-            make_rule(r"C:\test\all"),
-        ]
-        handler = FileRenameHandler()
+        handler = make_handler(
+            [
+                make_rule(r"C:\test\specific", filenames=["test1.md"]),
+                make_rule(r"C:\test\all"),
+            ]
+        )
 
         rule = handler._resolve_rule("other.txt")
         assert rule is not None
         assert str(rule.directory) == r"C:\test\all"
 
-    def test_resolve_rule_returns_none_without_catch_all(self, mock_config):
+    def test_resolve_rule_returns_none_without_catch_all(self, make_handler):
         """一致するルールも受け皿もない場合はNone"""
-        mock_config["rules"].return_value = [
-            make_rule(r"C:\test\specific", filenames=["test1.md"]),
-        ]
-        handler = FileRenameHandler()
+        handler = make_handler([make_rule(r"C:\test\specific", filenames=["test1.md"])])
 
         assert handler._resolve_rule("other.txt") is None
 
-    def test_resolve_rule_uses_first_matching_rule(self, mock_config):
+    def test_resolve_rule_uses_first_matching_rule(self, make_handler):
         """同じファイル名が複数のルールにある場合は先頭のルール"""
-        mock_config["rules"].return_value = [
-            make_rule(r"C:\test\first", filenames=["test1.md"]),
-            make_rule(r"C:\test\second", filenames=["test1.md"]),
-        ]
-        handler = FileRenameHandler()
+        handler = make_handler(
+            [
+                make_rule(r"C:\test\first", filenames=["test1.md"]),
+                make_rule(r"C:\test\second", filenames=["test1.md"]),
+            ]
+        )
 
         rule = handler._resolve_rule("test1.md")
         assert rule is not None
@@ -227,30 +216,30 @@ class TestFileRenameHandlerResolveRule:
 class TestFileRenameHandlerBuildTargetName:
     """_build_target_nameメソッドのテスト"""
 
-    def test_build_target_name_adds_suffix(self, mock_config):
+    def test_build_target_name_adds_suffix(self, make_handler):
         """サフィックスが付いていない場合は追加"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         rule = make_rule(r"C:\test\target")
 
         assert handler._build_target_name(Path("file.txt"), rule) == "file_renamed.txt"
 
-    def test_build_target_name_keeps_existing_suffix(self, mock_config):
+    def test_build_target_name_keeps_existing_suffix(self, make_handler):
         """既にサフィックスが付いている場合はそのまま"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         rule = make_rule(r"C:\test\target")
 
         assert handler._build_target_name(Path("file_renamed.txt"), rule) == "file_renamed.txt"
 
-    def test_build_target_name_without_pattern(self, mock_config):
+    def test_build_target_name_without_pattern(self, make_handler):
         """パターンが未設定の場合は何も追加しない"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         rule = make_rule(r"C:\test\target", suffix="")
 
         assert handler._build_target_name(Path("file.txt"), rule) == "file.txt"
 
-    def test_build_target_name_uses_rule_specific_suffix(self, mock_config):
+    def test_build_target_name_uses_rule_specific_suffix(self, make_handler):
         """ターゲットごとのサフィックスが使われる"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         rule = make_rule(r"C:\test\target", suffix="_backup")
 
         assert handler._build_target_name(Path("file.txt"), rule) == "file_backup.txt"
@@ -259,18 +248,18 @@ class TestFileRenameHandlerBuildTargetName:
 class TestFileRenameHandlerOnCreated:
     """on_createdメソッドのテスト"""
 
-    def test_on_created_processes_file(self, mock_config):
+    def test_on_created_processes_file(self, make_handler):
         """ファイル作成イベントを処理"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         event = FileCreatedEvent(r"C:\test\src\newfile.txt")
 
         with patch.object(handler, "_process_file") as mock_process:
             handler.on_created(event)
             mock_process.assert_called_once_with(r"C:\test\src\newfile.txt")
 
-    def test_on_created_ignores_directory(self, mock_config):
+    def test_on_created_ignores_directory(self, make_handler):
         """ディレクトリ作成イベントは無視"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         event = FileCreatedEvent(r"C:\test\src\newdir")
         event.is_directory = True
 
@@ -282,18 +271,18 @@ class TestFileRenameHandlerOnCreated:
 class TestFileRenameHandlerOnMoved:
     """on_movedメソッドのテスト"""
 
-    def test_on_moved_processes_file(self, mock_config):
+    def test_on_moved_processes_file(self, make_handler):
         """ファイル移動イベントを処理"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         event = FileMovedEvent(r"C:\test\src\old.txt", r"C:\test\src\new.txt")
 
         with patch.object(handler, "_process_file") as mock_process:
             handler.on_moved(event)
             mock_process.assert_called_once_with(r"C:\test\src\new.txt")
 
-    def test_on_moved_ignores_directory(self, mock_config):
+    def test_on_moved_ignores_directory(self, make_handler):
         """ディレクトリ移動イベントは無視"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         event = FileMovedEvent(r"C:\test\src\olddir", r"C:\test\src\newdir")
         event.is_directory = True
 
@@ -305,9 +294,9 @@ class TestFileRenameHandlerOnMoved:
 class TestFileRenameHandlerProcessFile:
     """_process_fileメソッドのテスト"""
 
-    def test_process_file_waits_for_ready(self, mock_config, temp_test_dirs):
+    def test_process_file_waits_for_ready(self, make_handler, temp_test_dirs):
         """ファイルの準備を待つ"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         test_file = temp_test_dirs["src"] / "test.txt"
         test_file.write_text("content")
 
@@ -318,9 +307,9 @@ class TestFileRenameHandlerProcessFile:
             handler._process_file(str(test_file))
             mock_wait.assert_called_once()
 
-    def test_process_file_not_ready_logs_warning(self, mock_config, caplog):
+    def test_process_file_not_ready_logs_warning(self, make_handler, caplog):
         """ファイルの準備ができない場合は警告ログ"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         test_file = Path(r"C:\test\src\test.txt")
 
         with patch.object(handler, "_wait_for_file_ready", return_value=False):
@@ -328,9 +317,9 @@ class TestFileRenameHandlerProcessFile:
                 handler._process_file(str(test_file))
             assert "ファイルの準備ができませんでした" in caplog.text
 
-    def test_process_file_returns_if_file_not_exists_after_wait(self, mock_config):
+    def test_process_file_returns_if_file_not_exists_after_wait(self, make_handler):
         """待機後にファイルが存在しない場合は何もしない"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         test_file = Path(r"C:\test\src\test.txt")
 
         with (
@@ -341,13 +330,14 @@ class TestFileRenameHandlerProcessFile:
             handler._process_file(str(test_file))
             mock_move.assert_not_called()
 
-    def test_process_file_moves_to_matching_target(self, mock_config, temp_test_dirs):
+    def test_process_file_moves_to_matching_target(self, make_handler, temp_test_dirs):
         """ファイル名指定に一致するターゲットへ移動"""
-        mock_config["rules"].return_value = [
-            make_rule(temp_test_dirs["target"]),
-            make_rule(temp_test_dirs["other"], filenames=["test1.md"], suffix=""),
-        ]
-        handler = FileRenameHandler()
+        handler = make_handler(
+            [
+                make_rule(temp_test_dirs["target"]),
+                make_rule(temp_test_dirs["other"], filenames=["test1.md"], suffix=""),
+            ]
+        )
         test_file = temp_test_dirs["src"] / "test1.md"
         test_file.write_text("content")
 
@@ -360,12 +350,11 @@ class TestFileRenameHandlerProcessFile:
         assert (temp_test_dirs["other"] / "test1.md").exists()
         assert not test_file.exists()
 
-    def test_process_file_matches_ignoring_case(self, mock_config, temp_test_dirs):
+    def test_process_file_matches_ignoring_case(self, make_handler, temp_test_dirs):
         """大文字小文字が違っても一致する"""
-        mock_config["rules"].return_value = [
-            make_rule(temp_test_dirs["other"], filenames=["test1.md"], suffix=""),
-        ]
-        handler = FileRenameHandler()
+        handler = make_handler(
+            [make_rule(temp_test_dirs["other"], filenames=["test1.md"], suffix="")]
+        )
         test_file = temp_test_dirs["src"] / "TEST1.MD"
         test_file.write_text("content")
 
@@ -377,13 +366,14 @@ class TestFileRenameHandlerProcessFile:
 
         assert (temp_test_dirs["other"] / "TEST1.MD").exists()
 
-    def test_process_file_moves_unmatched_to_catch_all(self, mock_config, temp_test_dirs):
+    def test_process_file_moves_unmatched_to_catch_all(self, make_handler, temp_test_dirs):
         """指定に一致しないファイルは受け皿ターゲットへ"""
-        mock_config["rules"].return_value = [
-            make_rule(temp_test_dirs["other"], filenames=["test1.md"]),
-            make_rule(temp_test_dirs["target"], suffix=""),
-        ]
-        handler = FileRenameHandler()
+        handler = make_handler(
+            [
+                make_rule(temp_test_dirs["other"], filenames=["test1.md"]),
+                make_rule(temp_test_dirs["target"], suffix=""),
+            ]
+        )
         test_file = temp_test_dirs["src"] / "other.txt"
         test_file.write_text("content")
 
@@ -396,13 +386,10 @@ class TestFileRenameHandlerProcessFile:
         assert (temp_test_dirs["target"] / "other.txt").exists()
 
     def test_process_file_keeps_file_without_matching_target(
-        self, mock_config, temp_test_dirs, caplog
+        self, make_handler, temp_test_dirs, caplog
     ):
         """移動先が無い場合はファイルを残してログ出力"""
-        mock_config["rules"].return_value = [
-            make_rule(temp_test_dirs["other"], filenames=["test1.md"]),
-        ]
-        handler = FileRenameHandler()
+        handler = make_handler([make_rule(temp_test_dirs["other"], filenames=["test1.md"])])
         test_file = temp_test_dirs["src"] / "other.txt"
         test_file.write_text("content")
 
@@ -413,13 +400,14 @@ class TestFileRenameHandlerProcessFile:
         assert test_file.exists()
         assert "移動先が見つかりませんでした" in caplog.text
 
-    def test_process_file_applies_target_specific_pattern(self, mock_config, temp_test_dirs):
+    def test_process_file_applies_target_specific_pattern(self, make_handler, temp_test_dirs):
         """ターゲットごとに異なるパターンが適用される"""
-        mock_config["rules"].return_value = [
-            make_rule(temp_test_dirs["other"], filenames=["test1.md"], suffix="_backup"),
-            make_rule(temp_test_dirs["target"], suffix="_magnate"),
-        ]
-        handler = FileRenameHandler()
+        handler = make_handler(
+            [
+                make_rule(temp_test_dirs["other"], filenames=["test1.md"], suffix="_backup"),
+                make_rule(temp_test_dirs["target"], suffix="_magnate"),
+            ]
+        )
         matched_file = temp_test_dirs["src"] / "test1.md"
         matched_file.write_text("content")
         other_file = temp_test_dirs["src"] / "other.txt"
@@ -439,9 +427,9 @@ class TestFileRenameHandlerProcessFile:
 class TestFileRenameHandlerMoveFile:
     """_move_fileメソッドのテスト"""
 
-    def test_move_file_renames_and_moves(self, mock_config, temp_test_dirs, caplog):
+    def test_move_file_renames_and_moves(self, make_handler, temp_test_dirs, caplog):
         """ファイルを正しくリネームして移動"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         rule = make_rule(temp_test_dirs["target"])
         test_file = temp_test_dirs["src"] / "original.txt"
         test_file.write_text("content")
@@ -456,9 +444,9 @@ class TestFileRenameHandlerMoveFile:
         # refresh_windows_folderが2回呼ばれる（ソースとターゲット）
         assert mock_refresh.call_count == 2
 
-    def test_move_file_without_pattern(self, mock_config, temp_test_dirs):
+    def test_move_file_without_pattern(self, make_handler, temp_test_dirs):
         """パターンが未設定の場合はリネームせず移動"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         rule = make_rule(temp_test_dirs["target"], suffix="")
         test_file = temp_test_dirs["src"] / "file.txt"
         test_file.write_text("content")
@@ -468,9 +456,9 @@ class TestFileRenameHandlerMoveFile:
 
         assert (temp_test_dirs["target"] / "file.txt").exists()
 
-    def test_move_file_overwrites_existing(self, mock_config, temp_test_dirs, caplog):
+    def test_move_file_overwrites_existing(self, make_handler, temp_test_dirs, caplog):
         """既存ファイルを上書き"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         rule = make_rule(temp_test_dirs["target"], suffix="")
         test_file = temp_test_dirs["src"] / "file.txt"
         test_file.write_text("new content")
@@ -484,9 +472,9 @@ class TestFileRenameHandlerMoveFile:
         assert existing_file.read_text() == "new content"
         assert "既存ファイルを上書きします" in caplog.text
 
-    def test_move_file_handles_exception(self, mock_config, temp_test_dirs, caplog):
+    def test_move_file_handles_exception(self, make_handler, temp_test_dirs, caplog):
         """移動時の例外を処理"""
-        handler = FileRenameHandler()
+        handler = make_handler()
         rule = make_rule(temp_test_dirs["target"])
         test_file = temp_test_dirs["src"] / "file.txt"
         test_file.write_text("content")
