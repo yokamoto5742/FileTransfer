@@ -287,6 +287,18 @@ class TestTrayAppWatching:
         passed_dirs = [str(call.args[0][0].directory) for call in mock_handler.call_args_list]
         assert passed_dirs == [r"C:\test\a", r"C:\test\b"]
 
+    def test_start_watching_processes_existing_files(
+        self, mock_config, existing_dirs, mock_observer
+    ):
+        """監視開始時に既存ファイルが処理される"""
+        with patch("app.tray_app.FileRenameHandler") as mock_handler:
+            app = TrayApp()
+            app.start_watching()
+
+        mock_handler.return_value.process_existing_files.assert_called_once_with(
+            app.watch_rules[0].source
+        )
+
     def test_stop_watching_stops_observer(self, mock_config, existing_dirs, caplog):
         """ファイル監視が正しく停止される"""
         app = TrayApp()

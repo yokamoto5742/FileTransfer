@@ -43,6 +43,12 @@ class FileRenameHandler(FileSystemEventHandler):
                 rule.directory.mkdir(parents=True, exist_ok=True)
                 logger.info(f"移動先ディレクトリを作成しました: {rule.directory}")
 
+    def process_existing_files(self, directory: Path) -> None:
+        """監視開始前から存在するファイルを処理する"""
+        for path in sorted(directory.iterdir()):
+            if path.is_file():
+                self._process_file(str(path))
+
     def on_created(self, event: FileSystemEvent) -> None:
         """新規ファイル作成時の処理"""
         if event.is_directory:

@@ -8,6 +8,7 @@
 ## [Unreleased]
 
 ### 追加
+- 起動時に監視元ディレクトリに既に存在するファイルを処理する機能（`FileRenameHandler.process_existing_files`）
 - 監視元ディレクトリを `[Watch1]`, `[Watch2]`... と複数指定できる機能（単一の`Observer`にまとめて登録）
 - 監視元ごとに独立した振り分けルール（`target_dirN` / `filenameN` / `patternN`）を設定できる機能
 - 起動時に移動先が監視元と同一ディレクトリの場合（無限ループになる）エラー終了するチェック

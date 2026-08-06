@@ -116,13 +116,19 @@ class TrayApp:
         wait_time = get_wait_time()
         observer = Observer()
 
+        handlers = []
         for rule in self.watch_rules:
             event_handler = FileRenameHandler(list(rule.targets), wait_time)
             observer.schedule(event_handler, str(rule.source), recursive=False)
             logger.info(f"フォルダ監視を開始しました: {rule.source}")
+            handlers.append((event_handler, rule.source))
 
         self.observer = observer
         observer.start()
+
+        # 取りこぼしを防ぐため、監視開始後に既存ファイルを処理する
+        for event_handler, source in handlers:
+            event_handler.process_existing_files(source)
 
     def stop_watching(self) -> None:
         """ファイル監視を停止"""

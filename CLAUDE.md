@@ -9,7 +9,7 @@ FileTransferは、指定フォルダを監視し、新規作成/移動された�
 ## アーキテクチャ
 
 - `main.py` — エントリーポイント。ロギングを初期化し `TrayApp` を起動。
-- `app/tray_app.py` — `TrayApp`: pystrayによるトレイアイコンを管理し、バックグラウンドスレッドで単一の`watchdog.Observer`に監視元を全て登録（`recursive=False`）。監視元ごとに`FileRenameHandler`を1つ生成する。
+- `app/tray_app.py` — `TrayApp`: pystrayによるトレイアイコンを管理し、バックグラウンドスレッドで単一の`watchdog.Observer`に監視元を全て登録（`recursive=False`）。監視元ごとに`FileRenameHandler`を1つ生成する。監視開始後、各監視元に既に存在するファイルを処理する。
 - `service/file_rename_handler.py` — `FileRenameHandler`: ファイル作成/移動イベントを検知し、書き込み完了を待ってからファイル名に応じた移動先へリネームして移動。`SHChangeNotify`（ctypes経由）でExplorerを更新。設定は読まず、移動先ルールと待機時間をコンストラクタで受け取る。
 - `utils/config_manager.py` — `utils/config.ini`の読み込み/保存。PyInstallerでフリーズされた実行ファイルでは`sys._MEIPASS`からパスを解決。
 - `utils/log_rotation.py` — `TimedRotatingFileHandler`による日次ログローテーションと古いログの自動削除を設定。

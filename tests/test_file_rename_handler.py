@@ -286,6 +286,44 @@ class TestFileRenameHandlerBuildTargetName:
         assert handler._build_target_name(Path("file.txt"), rule) == "file_backup.txt"
 
 
+class TestFileRenameHandlerProcessExistingFiles:
+    """process_existing_filesメソッドのテスト"""
+
+    def test_processes_each_existing_file(self, make_handler, temp_test_dirs):
+        """監視開始前から存在するファイルをすべて処理する"""
+        handler = make_handler()
+        (temp_test_dirs["src"] / "a.txt").write_text("a")
+        (temp_test_dirs["src"] / "b.txt").write_text("b")
+
+        with patch.object(handler, "_process_file") as mock_process:
+            handler.process_existing_files(temp_test_dirs["src"])
+
+        processed = [Path(call.args[0]).name for call in mock_process.call_args_list]
+        assert processed == ["a.txt", "b.txt"]
+
+    def test_ignores_subdirectories(self, make_handler, temp_test_dirs):
+        """サブディレクトリは処理しない"""
+        handler = make_handler()
+        (temp_test_dirs["src"] / "sub").mkdir()
+
+        with patch.object(handler, "_process_file") as mock_process:
+            handler.process_existing_files(temp_test_dirs["src"])
+
+        mock_process.assert_not_called()
+
+    def test_moves_existing_file_to_target(self, make_handler, temp_test_dirs):
+        """既存ファイルが移動先へ移動される"""
+        handler = make_handler([make_rule(temp_test_dirs["target"], suffix="")])
+        test_file = temp_test_dirs["src"] / "existing.txt"
+        test_file.write_text("content")
+
+        with patch("service.file_rename_handler.refresh_windows_folder"):
+            handler.process_existing_files(temp_test_dirs["src"])
+
+        assert not test_file.exists()
+        assert (temp_test_dirs["target"] / "existing.txt").exists()
+
+
 class TestFileRenameHandlerOnCreated:
     """on_createdメソッドのテスト"""
 
