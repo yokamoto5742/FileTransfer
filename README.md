@@ -13,8 +13,8 @@ Windowsトレイアプリケーション。ディレクトリを監視して新�
 
 ## 動作環境
 
-- Windows 10/11
-- Python 3.13+
+- Windows 11
+- Python 3.13以降
 
 ## インストール
 
@@ -35,24 +35,29 @@ python -m venv .venv
 ### 3. 依存ライブラリのインストール
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ### 4. 設定ファイルの編集
 
-`utils/config.ini` を編集して監視フォルダとターゲットフォルダを指定：
+`utils/config.ini` を編集して監視フォルダとターゲットフォルダを指定。監視元ごとに `[WatchN]` セクションを作成：
 
 ```ini
-[Paths]
+[Watch1]
 processing_dir = C:\path\to\monitoring\folder
 target_dir1 = C:\path\to\target\folder1
 filename1 = test1.md, test2.txt
+regex1 = \.md$
+pattern1 = _suffix
 target_dir2 = C:\path\to\target\folder2
 filename2 =
-
-[Rename]
-pattern1 = _suffix
 pattern2 =
+
+[Watch2]
+processing_dir = C:\another\folder
+target_dir1 = C:\path\to\different\target
+filename1 =
+pattern1 =
 
 [App]
 wait_time = 0.5
@@ -62,18 +67,24 @@ log_retention_days = 7
 log_directory = logs
 log_level = INFO
 debug_mode = False
+project_name = FileTransfer
 ```
 
+**監視元ごとの設定（`[WatchN]`）**
 - `processing_dir`: 監視対象フォルダ
 - `target_dirN`: ファイルの移動先フォルダ（`target_dir1`, `target_dir2`... と複数指定可）
-- `filenameN`: `target_dirN` へ移動するファイル名（カンマ区切り、拡張子込み）。空欄の場合は全ファイルが対象
-- `patternN`: `target_dirN` へ移動する際にファイル名末尾（拡張子の前）に追加するパターン。空欄の場合は何も追加しない
-- `wait_time`: ファイル書き込み完了確認の待機時間（秒）
+- `filenameN`: `target_dirN` へ移動するファイル名（カンマ区切り、完全一致、拡張子込み）。空欄の場合は全ファイルが対象
+- `regexN`: `target_dirN` へ移動するファイル名の正規表現（`filenameN` の完全一致に該当しない場合のみ判定）。空欄の場合は無効
+- `patternN`: `target_dirN` へ移動する際にファイル名末尾（拡張子の前）に追加するサフィックス。空欄の場合は何も追加しない
+
+**グローバル設定**
+- `[App]` セクション: `wait_time` はファイル書き込み完了確認の待機時間（秒）
+- `[LOGGING]` セクション: ログ設定（`log_retention_days`, `log_level`, `debug_mode`, `project_name` など）
 
 **振り分けの優先順位**
 
-1. `filenameN` にファイル名が指定されているルール（番号の若い順）
-2. `filenameN` が空欄のルール（番号の若い順）
+1. `filenameN` で完全一致したルール（番号の若い順）
+2. `regexN` で正規表現マッチしたルール（番号の若い順）
 3. どちらにも該当しない場合は移動せず、ログに記録して監視フォルダに残す
 
 ## 使用方法
@@ -88,9 +99,14 @@ python main.py
 
 ### ファイル処理フロー
 
+アプリケーション起動時：
+1. 設定ファイルから監視元（`processing_dir`）と移動先ルールを読み込む
+2. 各監視元に既に存在するファイルを処理
+
+ファイル作成/移動時：
 1. `processing_dir` にファイルが作成/移動される
-2. ファイルの書き込み完了を確認（約5秒間のポーリング）
-3. ファイル名から移動先（`target_dirN`）を決定（`filenameN` の指定を優先）
+2. ファイルの書き込み完了を確認（ポーリング）
+3. ファイル名から移動先（`target_dirN`）を決定（`filenameN` の完全一致、次に `regexN` の正規表現マッチを優先）
 4. 移動先に対応する `patternN` に基づいてファイル名をリネーム
 5. リネームされたファイルを移動先へ移動
 6. Windows Explorer に変更を通知して フォルダ表示を更新
@@ -109,48 +125,64 @@ FileTransfer/
 │   ├── config.ini               # 設定ファイル
 │   └── log_rotation.py          # ログローテーション設定
 ├── tests/                       # ユニットテスト
-├── scripts/
-│   └── version_manager.py       # バージョン管理ユーティリティ
 ├── main.py                      # エントリーポイント
 ├── build.py                     # 実行ファイルビルドスクリプト
+├── pyproject.toml               # プロジェクト設定・依存ライブラリ管理（uv）
+├── uv.lock                      # ロックファイル（依存ライブラリバージョン固定）
 ├── CLAUDE.md                    # 開発ガイドライン
-└── requirements.txt             # 依存ライブラリ
+└── pyrightconfig.json           # 型チェッカー設定
 ```
 
 ## コアコンポーネント
 
 ### TrayApp（`app/tray_app.py`）
 
-タスクトレイアイコンを作成・管理し、ファイル監視スレッドを実行。タスクトレイのメインスレッド上でアイコンを維持しながら、バックグラウンドでファイル監視を行います。
+タスクトレイアイコンを作成・管理し、複数の監視元を監視するスレッドを実行。タスクトレイのメインスレッド上でアイコンを維持しながら、バックグラウンドで複数フォルダを監視します。
 
 **主な機能**
 - PIL/ImageDraw でタスクトレイアイコンを生成
 - pystray でタスクトレイ操作を管理
-- Watchdog Observer でファイルシステムイベントを監視
+- Watchdog Observer で複数フォルダのファイルシステムイベントを監視
+- 監視元ごとに独立した FileRenameHandler を生成・管理
+- 移動先が監視元と同一でないか起動時に検証
 
 ### FileRenameHandler（`service/file_rename_handler.py`）
 
-Watchdog イベントハンドラー。ファイル作成/移動イベントを処理し、リネーム・移動を実行。
+Watchdog イベントハンドラー。ファイル作成/移動イベントを処理し、リネーム・移動を実行。設定をコンストラクタで受け取り、移動先ルールと待機時間に基づいてファイル処理を行います。
 
 **主な機能**
+- 監視開始前に既に存在するファイルの処理（`process_existing_files()` メソッド）
 - ファイル書き込み完了確認（待機ループ）
-- ファイル名から移動先ルールを解決（`filenameN` の指定を優先）
-- 移動先ごとのリネームパターンを適用
+- ファイル名から移動先ルールを解決（`filename` の完全一致を優先、次に `regex` の正規表現マッチ）
+- 移動先ごとのリネームパターン（サフィックス）を適用
 - Windows Shell API（`SHChangeNotify`）でExplorerの表示更新
 
 ```python
 # ファイル処理例
-handler = FileRenameHandler()
-# ファイルが processing_dir に作成されると自動処理
+from utils.config_manager import TargetRule
+from service.file_rename_handler import FileRenameHandler
+from pathlib import Path
+
+targets = [
+    TargetRule(directory=Path("C:/target1"), filename=["file1.txt"], regex=None, pattern="_suffix1"),
+    TargetRule(directory=Path("C:/target2"), filename=[], regex=r"\.md$", pattern="_suffix2"),
+]
+handler = FileRenameHandler(targets=targets, wait_time=0.5)
+handler.process_existing_files(Path("C:/monitoring"))  # 既存ファイルを処理
 ```
 
 ### ConfigManager（`utils/config_manager.py`）
 
-`config.ini` の読み込み・保存、パス管理。PyInstaller でビルドされた実行ファイルは `sys._MEIPASS` からの相対パスで設定ファイルを読み込みます。
+`config.ini` の読み込み・保存、パス管理。複数の監視元（`[Watch1]`, `[Watch2]`...）をサポート。PyInstaller でビルドされた実行ファイルは `sys._MEIPASS` からの相対パスで設定ファイルを読み込みます。
+
+**監視ルール（WatchRule）**
+- 各 `[WatchN]` セクションは独立した監視元（`processing_dir`）と移動先ルールセット（`TargetRule` のリスト）を持つ
 
 **振り分けルール（TargetRule）**
-- `target_dirN` / `filenameN` / `patternN` を番号でペアリングし、番号の昇順で `TargetRule` のリストを構築
-- 正規表現パターンに自動的に `$` サフィックスを追加（ファイル名末尾マッチング）
+- `target_dirN` / `filenameN` / `regexN` / `patternN` を番号でペアリングし、番号の昇順で `TargetRule` のリストを構築
+- `filenameN` は完全一致検査（カンマ区切りで複数指定可）
+- `regexN` は正規表現マッチング（`filenameN` に該当しない場合のみ実行）、自動的に末尾を示す `$` が追加される
+- `patternN` はファイル名末尾（拡張子の前）に追加するサフィックス
 - `target_dirN` が1つも設定されていない場合は `ValueError` を送出
 
 ### LogRotation（`utils/log_rotation.py`）
@@ -168,7 +200,7 @@ python main.py
 ### テスト実行
 
 ```bash
-python -m pytest tests/ -v --tb=short --disable-warnings
+python -m pytest tests/ -v --tb=short
 ```
 
 テストは pytest 標準フレームワーク。カバレッジ追跡は pytest-cov で実施。
@@ -179,7 +211,7 @@ python -m pytest tests/ -v --tb=short --disable-warnings
 pyright
 ```
 
-`pyrightconfig.json` で Python 3.13、標準型チェックモードを設定。`app`, `service`, `utils` ディレクトリをチェック。
+`pyproject.toml` の `[tool.pyright]` セクションで Python 3.13、標準型チェックモードを設定。`app`, `service`, `utils`, `tests` ディレクトリをチェック。
 
 ### 実行ファイルビルド
 
@@ -187,24 +219,19 @@ pyright
 python build.py
 ```
 
-自動実行内容：
-- `app/__init__.py` 内のパッチバージョンをインクリメント
-- `README.md` のバージョン・日付情報を更新
-- PyInstaller で `--windowed` フラグ付きでビルド
-- `utils/config.ini` を実行ファイルにバンドル
+PyInstaller で実行ファイルをビルド（`--windowed` フラグ、`utils/config.ini` をバンドル）
 
 ## 設定ファイル詳細
 
 ### config.ini
 
 ```ini
-[Paths]
-processing_dir = C:\Shinseikai\FileTransfer\processing
-target_dir1 = C:\Users\yokam\Desktop\Magnate\file
+[Watch1]
+processing_dir = C:\path\to\monitoring
+target_dir1 = C:\path\to\target
 filename1 =
-
-[Rename]
-pattern1 = _magnate
+regex1 = \.md$
+pattern1 = _suffix
 
 [App]
 wait_time = 0.5
@@ -227,7 +254,8 @@ project_name = FileTransfer
 
 - イベント検出：`on_created` または `on_moved` イベント発火時に処理開始
 - 上書き動作：ターゲット先に同名ファイルが存在する場合、確認なしで置き換え
-- パターン自動処理：正規表現パターンに自動的に `$` を追加（未指定時）
+- 正規表現処理：`regexN` で指定した正規表現の末尾には自動的に `$` が追加される（ファイル名末尾マッチング）
+- 既存ファイル処理：監視開始時に各監視元フォルダに既に存在するファイルを処理
 
 ## トラブルシューティング
 
@@ -239,7 +267,7 @@ project_name = FileTransfer
 
 ### ファイルがリネームされない
 
-1. `config.ini` の `patternN` が正規表現として正しいか確認
+1. `config.ini` の `filenameN` / `regexN` がファイルと一致しているか確認
 2. `patternN` の番号が意図した `target_dirN` と一致しているか確認
 3. `log_level = DEBUG` に変更してログを詳しく出力
 
@@ -265,8 +293,6 @@ project_name = FileTransfer
 
 このプロジェクトのライセンス情報については、 [LICENSE](docs/LICENSE) を参照してください。
 
-## バージョン情報
+## 更新履歴
 
-- **現在のバージョン**:1.0.0
-- **最終更新日**: ：2025-12-23
-- 更新履歴は [CHANGELOG.md](docs/CHANGELOG.md) を参照
+更新履歴は [CHANGELOG.md](docs/CHANGELOG.md) を参照してください。
