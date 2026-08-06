@@ -2,4 +2,34 @@
 name = "filetransfer"
 version = "0.1.0"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pillow>=12.0.0",
+    "pyinstaller>=6.17.0",
+    "pyinstaller-hooks-contrib>=2025.10",
+    "pystray>=0.19.5",
+    "python-dotenv>=1.2.1",
+    "watchdog>=6.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.9.2",
+    "pyright>=1.1.409",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "pytest-mock>=3.14.1",
+    "ruff>=0.15.14",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+
+[tool.pyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.13"
+include = ["app", "service", "utils", "tests"]
+exclude = ["scripts"]
+reportMissingTypeStubs = false
+reportUnusedVariable = true
+reportUnusedImport = true
