@@ -7,7 +7,7 @@ Windowsトレイアプリケーション。ディレクトリを監視して新�
 - Windows タスクトレイで常駐動作
 - ファイル作成/移動イベントを自動検出
 - ファイル名を設定パターンに基づいて自動リネーム
-- ターゲットディレクトリへの自動移動
+- 複数のターゲットディレクトリへの振り分け（ファイル名指定・ディレクトリごとのリネームパターン）
 - Windows Explorer フォルダ表示の自動更新
 - ログローテーション機能（日次で古いログ自動削除）
 
@@ -45,10 +45,14 @@ pip install -r requirements.txt
 ```ini
 [Paths]
 processing_dir = C:\path\to\monitoring\folder
-target_dir = C:\path\to\target\folder
+target_dir1 = C:\path\to\target\folder1
+filename1 = test1.md, test2.txt
+target_dir2 = C:\path\to\target\folder2
+filename2 =
 
 [Rename]
-pattern = _suffix
+pattern1 = _suffix
+pattern2 =
 
 [App]
 wait_time = 0.5
@@ -61,9 +65,16 @@ debug_mode = False
 ```
 
 - `processing_dir`: 監視対象フォルダ
-- `target_dir`: ファイルの移動先フォルダ
-- `pattern`: ファイル名に追加するパターン（複数パターンは `pattern1`, `pattern2` など）
+- `target_dirN`: ファイルの移動先フォルダ（`target_dir1`, `target_dir2`... と複数指定可）
+- `filenameN`: `target_dirN` へ移動するファイル名（カンマ区切り、拡張子込み）。空欄の場合は全ファイルが対象
+- `patternN`: `target_dirN` へ移動する際にファイル名末尾（拡張子の前）に追加するパターン。空欄の場合は何も追加しない
 - `wait_time`: ファイル書き込み完了確認の待機時間（秒）
+
+**振り分けの優先順位**
+
+1. `filenameN` にファイル名が指定されているルール（番号の若い順）
+2. `filenameN` が空欄のルール（番号の若い順）
+3. どちらにも該当しない場合は移動せず、ログに記録して監視フォルダに残す
 
 ## 使用方法
 
@@ -79,9 +90,10 @@ python main.py
 
 1. `processing_dir` にファイルが作成/移動される
 2. ファイルの書き込み完了を確認（約5秒間のポーリング）
-3. ファイル名がパターンに基づいてリネーム
-4. リネームされたファイルを `target_dir` に移動
-5. Windows Explorer に変更を通知して フォルダ表示を更新
+3. ファイル名から移動先（`target_dirN`）を決定（`filenameN` の指定を優先）
+4. 移動先に対応する `patternN` に基づいてファイル名をリネーム
+5. リネームされたファイルを移動先へ移動
+6. Windows Explorer に変更を通知して フォルダ表示を更新
 
 ## プロジェクト構成
 
@@ -122,9 +134,9 @@ Watchdog イベントハンドラー。ファイル作成/移動イベントを�
 
 **主な機能**
 - ファイル書き込み完了確認（待機ループ）
-- 設定からリネームパターンを取得して適用
+- ファイル名から移動先ルールを解決（`filenameN` の指定を優先）
+- 移動先ごとのリネームパターンを適用
 - Windows Shell API（`SHChangeNotify`）でExplorerの表示更新
-- ターゲットディレクトリへの移動
 
 ```python
 # ファイル処理例
@@ -136,9 +148,10 @@ handler = FileRenameHandler()
 
 `config.ini` の読み込み・保存、パス管理。PyInstaller でビルドされた実行ファイルは `sys._MEIPASS` からの相対パスで設定ファイルを読み込みます。
 
-**パターンマッチング**
+**振り分けルール（TargetRule）**
+- `target_dirN` / `filenameN` / `patternN` を番号でペアリングし、番号の昇順で `TargetRule` のリストを構築
 - 正規表現パターンに自動的に `$` サフィックスを追加（ファイル名末尾マッチング）
-- 複数パターンはパターン長でソート（長いものを優先）
+- `target_dirN` が1つも設定されていない場合は `ValueError` を送出
 
 ### LogRotation（`utils/log_rotation.py`）
 
@@ -187,10 +200,11 @@ python build.py
 ```ini
 [Paths]
 processing_dir = C:\Shinseikai\FileTransfer\processing
-target_dir = C:\Users\yokam\Desktop\Magnate\file
+target_dir1 = C:\Users\yokam\Desktop\Magnate\file
+filename1 =
 
 [Rename]
-pattern = _magnate
+pattern1 = _magnate
 
 [App]
 wait_time = 0.5
@@ -225,13 +239,19 @@ project_name = FileTransfer
 
 ### ファイルがリネームされない
 
-1. `config.ini` の `pattern` が正規表現として正しいか確認
-2. パターンが複数ある場合、優先順位（パターン長で降順）を確認
+1. `config.ini` の `patternN` が正規表現として正しいか確認
+2. `patternN` の番号が意図した `target_dirN` と一致しているか確認
 3. `log_level = DEBUG` に変更してログを詳しく出力
+
+### ファイルが移動されない
+
+1. `filenameN` にファイル名が拡張子込みで正しく記載されているか確認
+2. どの `filenameN` にも該当しないファイルを移動したい場合は、`filenameN` が空欄のターゲットを用意する
+3. ログに「移動先が見つかりませんでした」が出力されていないか確認
 
 ### Windows Explorer にファイルが表示されない
 
-1. ターゲットフォルダ（`target_dir`）の存在確認
+1. ターゲットフォルダ（`target_dirN`）の存在確認
 2. ターゲットフォルダの書き込み権限確認
 3. エクスプローラーを手動で更新（F5キー）
 

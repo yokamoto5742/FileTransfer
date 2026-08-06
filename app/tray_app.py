@@ -36,27 +36,27 @@ class TrayApp:
         """タスクトレイ用のアイコン画像を作成"""
         # 64x64の画像を作成
         size = 64
-        image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+        image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
 
         # 背景円（青）
-        draw.ellipse([4, 4, size - 4, size - 4], fill='#4A90D9')
+        draw.ellipse([4, 4, size - 4, size - 4], fill="#4A90D9")
 
         # ファイルアイコン風の図形（白）
         # 外枠
-        draw.rectangle([20, 12, 44, 52], fill='white')
+        draw.rectangle([20, 12, 44, 52], fill="white")
         # 折り返し部分
-        draw.polygon([(32, 12), (44, 24), (32, 24)], fill='#4A90D9')
+        draw.polygon([(32, 12), (44, 24), (32, 24)], fill="#4A90D9")
 
         # 矢印（リネームを表現）
-        draw.line([(24, 38), (40, 38)], fill='#4A90D9', width=3)
-        draw.polygon([(36, 33), (42, 38), (36, 43)], fill='#4A90D9')
+        draw.line([(24, 38), (40, 38)], fill="#4A90D9", width=3)
+        draw.polygon([(36, 33), (42, 38), (36, 43)], fill="#4A90D9")
 
         return image
 
     def _open_folder(self) -> None:
         """監視フォルダをエクスプローラーで開く"""
-        subprocess.Popen(['explorer', self.src_dir])
+        subprocess.Popen(["explorer", self.src_dir])
 
     def _quit_app(self) -> None:
         """アプリケーションを終了"""
@@ -69,25 +69,22 @@ class TrayApp:
         """タスクトレイメニューを作成"""
         return pystray.Menu(
             pystray.MenuItem(
-                text=f"監視中: {os.path.basename(self.src_dir)}",
-                action=None,
-                enabled=False
+                text=f"監視中: {os.path.basename(self.src_dir)}", action=None, enabled=False
             ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                text="監視フォルダを開く",
-                action=lambda: self._open_folder()
-            ),
+            pystray.MenuItem(text="監視フォルダを開く", action=lambda: self._open_folder()),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                text="終了",
-                action=lambda: self._quit_app()
-            )
+            pystray.MenuItem(text="終了", action=lambda: self._quit_app()),
         )
 
     def start_watching(self) -> None:
         """ファイル監視を開始"""
-        event_handler = FileRenameHandler()
+        try:
+            event_handler = FileRenameHandler()
+        except ValueError as e:
+            logger.error(f"設定エラーのため監視を開始できません: {e}")
+            return
+
         self.observer = Observer()
         if self.observer is not None:
             self.observer.schedule(event_handler, self.src_dir, recursive=False)
@@ -112,7 +109,7 @@ class TrayApp:
             name="FileTransfer",
             icon=self._create_icon_image(),
             title="FileTransfer",
-            menu=self._create_menu()
+            menu=self._create_menu(),
         )
 
         logger.info("タスクトレイに常駐しています")
