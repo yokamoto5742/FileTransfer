@@ -32,8 +32,6 @@ pyright
 python build.py
 ```
 
-`app/__init__.py`のパッチバージョンを自動インクリメントし、`docs/README.md`のバージョン/更新日を書き換えたうえで、PyInstallerを実行する（`--windowed`、`utils/config.ini`を同梱）。
-
 ## 実行時設定
 
 `utils/config.ini`に実際の稼働設定が直接コミットされている（テンプレートではない）。
